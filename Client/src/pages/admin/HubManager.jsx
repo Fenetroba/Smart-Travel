@@ -1,10 +1,10 @@
 import { useState } from 'react'
-import { useAppContext } from '../../context/AppContext'
+import { useHubs } from '../../store/hooks/useHubs'
 import HubModal from '../../components/admin/HubModal'
 import ConfirmDialog from '../../components/shared/ConfirmDialog'
 
 export default function HubManager() {
-  const { hubs, addHub, updateHub, deleteHub } = useAppContext()
+  const { hubs, addHub, updateHub, deleteHub } = useHubs()
   const [modalHub, setModalHub] = useState(null)
   const [deleteTarget, setDeleteTarget] = useState(null)
 

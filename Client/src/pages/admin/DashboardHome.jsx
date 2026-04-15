@@ -1,8 +1,12 @@
-import { useAppContext } from '../../context/AppContext'
+import { useHubs } from '../../store/hooks/useHubs'
+import { useRoutes } from '../../store/hooks/useRoutes'
+import { useTransport } from '../../store/hooks/useTransport'
 import StatCard from '../../components/admin/StatCard'
 
 export default function DashboardHome() {
-  const { hubs, routes, transportModes } = useAppContext()
+  const { hubs } = useHubs()
+  const { routes } = useRoutes()
+  const { transportModes } = useTransport()
 
   const bus = transportModes.find(m => m.id === 'bus')
   const avgTravelTime =

@@ -8,7 +8,7 @@ const transportSchema = new mongoose.Schema(
   {
     type: {
       type: String,
-      enum: ['taxi', 'bus', 'walk'],
+      enum: ['taxi', 'bus', 'walk', "Ride"],
       required: [true, 'Transport type is required'],
       unique: true,
     },

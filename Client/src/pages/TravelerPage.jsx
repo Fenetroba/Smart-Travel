@@ -1,5 +1,7 @@
 import { useState } from 'react'
-import { useAppContext } from '../context/AppContext'
+import { useHubs } from '../store/hooks/useHubs'
+import { useRoutes } from '../store/hooks/useRoutes'
+import { useTransport } from '../store/hooks/useTransport'
 import { analyzeWithDelay } from '../lib/routeAnalyzer'
 import { getRecommendations } from '../lib/recommendationEngine'
 import { nearestHub } from '../lib/geoUtils'
@@ -9,7 +11,9 @@ import MapView from '../components/traveler/MapView'
 import ResultsPanel from '../components/traveler/ResultsPanel'
 
 export default function TravelerPage() {
-  const { hubs, routes, transportModes } = useAppContext()
+  const { hubs } = useHubs()
+  const { routes } = useRoutes()
+  const { transportModes } = useTransport()
 
   const [origin, setOrigin] = useState('')
   const [destination, setDestination] = useState('')

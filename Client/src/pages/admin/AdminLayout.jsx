@@ -1,69 +1,40 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { Outlet } from 'react-router-dom'
 import Sidebar from '../../components/admin/Sidebar'
-
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000'
-
-/**
- * Reads the stored auth token from sessionStorage.
- * Returns null if missing or expired (basic check).
- */
-function getStoredAuth() {
-  try {
-    const raw = sessionStorage.getItem('adminAuth')
-    if (!raw) return null
-    return JSON.parse(raw) // { token, user: { id, name, email, role } }
-  } catch {
-    return null
-  }
-}
+import { useAuth } from '../../store/hooks/useAuth'
+import { useHubs } from '../../store/hooks/useHubs'
 
 export default function AdminLayout() {
-  const [auth, setAuth] = useState(() => getStoredAuth())
+  const { user, isAuthenticated, loading: authLoading, error: authError, login, logout, clearError } = useAuth()
+  const { fetchHubs } = useHubs()
+  
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [error, setError] = useState('')
-  const [loading, setLoading] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(false)
+
+  // Fetch hubs when authenticated
+  useEffect(() => {
+    if (isAuthenticated) {
+      fetchHubs()
+    }
+  }, [isAuthenticated, fetchHubs])
 
   const handleLogin = useCallback(async (e) => {
     e.preventDefault()
-    setError('')
-    setLoading(true)
-
-    try {
-      const res = await fetch(`${API_BASE}/api/auth/login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
-      })
-
-      const data = await res.json()
-
-      if (!res.ok) {
-        setError(data.message || 'Login failed')
-        return
-      }
-
-      const authData = { token: data.token, user: data.user }
-      sessionStorage.setItem('adminAuth', JSON.stringify(authData))
-      setAuth(authData)
-    } catch {
-      setError('Could not reach the server. Is the backend running?')
-    } finally {
-      setLoading(false)
+    clearError()
+    const success = await login(email, password)
+    if (success) {
+      setEmail('')
+      setPassword('')
     }
-  }, [email, password])
+  }, [email, password, login, clearError])
 
   const handleLogout = useCallback(() => {
-    sessionStorage.removeItem('adminAuth')
-    setAuth(null)
-    setEmail('')
-    setPassword('')
-  }, [])
+    logout()
+  }, [logout])
 
   // ── Login screen ────────────────────────────────────────────────────────────
-  if (!auth) {
+  if (!isAuthenticated) {
     return (
       <div className="min-h-screen bg-[#0F172A] flex items-center justify-center px-4">
         <div className="bg-white/5 border border-white/10 rounded-2xl p-8 w-full max-w-sm shadow-2xl">
@@ -101,18 +72,18 @@ export default function AdminLayout() {
               />
             </div>
 
-            {error && (
+            {authError && (
               <p className="text-red-400 text-sm bg-red-400/10 border border-red-400/20 rounded-lg px-3 py-2">
-                ⚠ {error}
+                ⚠ {authError}
               </p>
             )}
 
             <button
               type="submit"
-              disabled={loading}
+              disabled={authLoading}
               className="bg-[#2563EB] hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed text-white font-semibold py-2.5 rounded-lg transition-colors flex items-center justify-center gap-2"
             >
-              {loading ? (
+              {authLoading ? (
                 <>
                   <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                   Signing in…
@@ -130,7 +101,7 @@ export default function AdminLayout() {
   // ── Authenticated layout ────────────────────────────────────────────────────
   return (
     <div className="flex min-h-screen bg-[#0F172A] text-white">
-      <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} role={auth.user.role} />
+      <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} role={user?.role} />
 
       <div className="flex-1 flex flex-col min-w-0">
         {/* Top bar */}
@@ -149,8 +120,8 @@ export default function AdminLayout() {
           {/* User info + logout */}
           <div className="flex items-center gap-3 ml-auto">
             <div className="text-right hidden sm:block">
-              <p className="text-sm font-medium">{auth.user.name}</p>
-              <p className="text-xs text-white/40 capitalize">{auth.user.role}</p>
+              <p className="text-sm font-medium">{user?.name}</p>
+              <p className="text-xs text-white/40 capitalize">{user?.role}</p>
             </div>
             <button
               onClick={handleLogout}
@@ -162,7 +133,7 @@ export default function AdminLayout() {
         </header>
 
         <main className="flex-1 p-6 overflow-auto">
-          <Outlet context={{ auth }} />
+          <Outlet context={{ auth: { user, token: sessionStorage.getItem('adminAuth') ? JSON.parse(sessionStorage.getItem('adminAuth')).token : null } }} />
         </main>
       </div>
     </div>

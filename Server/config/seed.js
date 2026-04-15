@@ -11,6 +11,7 @@ const Hub = require('../models/Hub');
 const Transport = require('../models/Transport');
 const Place = require('../models/Place');
 const User = require('../models/User');
+const Analytics = require('../models/Analytics');
 
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/smart_travel_addis';
 
@@ -53,17 +54,23 @@ async function seed() {
   console.log('Connected to MongoDB');
 
   // Clear existing data
-  await Promise.all([Hub.deleteMany({}), Transport.deleteMany({}), Place.deleteMany({}), User.deleteMany({})]);
+  await Promise.all([
+    Hub.deleteMany({}), 
+    Transport.deleteMany({}), 
+    Place.deleteMany({}), 
+    User.deleteMany({}),
+    Analytics.deleteMany({})
+  ]);
   console.log('Cleared existing data');
 
   // Create default superadmin user
-  const superadmin = await User.create({
-    name: 'Super Admin',
-    email: 'superadmin@smarttravel.com',
-    password: 'admin123',
-    role: 'superadmin'
-  });
-  console.log(`✅ Created superadmin user: ${superadmin.email}`);
+  // const superadmin = await User.create({
+  //   name: 'Super Admin',
+  //   email: 'superadmin@smarttravel.com',
+  //   password: 'admin123',
+  //   role: 'superadmin'
+  // });
+  // console.log(`✅ Created superadmin user: ${superadmin.email}`);
 
   // Create a regular admin user
   const admin = await User.create({
@@ -82,6 +89,56 @@ async function seed() {
 
   await Place.insertMany(places);
   console.log(`✅ Seeded ${places.length} places`);
+
+  // Seed sample analytics data
+  const sampleAnalytics = [];
+  const locations = ['Kality', 'Megenagna', 'Sarbet', 'Bole', 'Piassa', 'Merkato'];
+  const transportTypes = ['taxi', 'bus', 'walk'];
+  
+  // Generate data for the last 7 days
+  for (let i = 6; i >= 0; i--) {
+    const date = new Date();
+    date.setDate(date.getDate() - i);
+    
+    // Generate 20-50 searches per day
+    const searchCount = Math.floor(Math.random() * 30) + 20;
+    
+    for (let j = 0; j < searchCount; j++) {
+      const startLocation = locations[Math.floor(Math.random() * locations.length)];
+      let endLocation = locations[Math.floor(Math.random() * locations.length)];
+      while (endLocation === startLocation) {
+        endLocation = locations[Math.floor(Math.random() * locations.length)];
+      }
+      
+      const transportType = transportTypes[Math.floor(Math.random() * transportTypes.length)];
+      const sessionId = `session_${Date.now()}_${Math.random()}`;
+      
+      // Randomize time within the day
+      const searchTime = new Date(date);
+      searchTime.setHours(Math.floor(Math.random() * 24));
+      searchTime.setMinutes(Math.floor(Math.random() * 60));
+      
+      sampleAnalytics.push({
+        eventType: 'route_search',
+        data: {
+          startLocation,
+          endLocation,
+          transportType,
+          distance: Math.floor(Math.random() * 20) + 5,
+          cost: Math.floor(Math.random() * 100) + 20,
+          duration: Math.floor(Math.random() * 60) + 15,
+          sessionId,
+          ipAddress: `192.168.1.${Math.floor(Math.random() * 255)}`,
+          userAgent: 'Mozilla/5.0 (Sample Data)'
+        },
+        createdAt: searchTime,
+        updatedAt: searchTime
+      });
+    }
+  }
+  
+  await Analytics.insertMany(sampleAnalytics);
+  console.log(`✅ Seeded ${sampleAnalytics.length} analytics records`);
 
   await mongoose.disconnect();
   console.log('Done. Database seeded successfully.');

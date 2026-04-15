@@ -9,6 +9,33 @@ function signToken(userId) {
   });
 }
 
+/** Create and send token as cookie */
+const createSendToken = (user, statusCode, res) => {
+  const token = signToken(user._id);
+  
+  const cookieOptions = {
+    expires: new Date(
+      Date.now() + (process.env.JWT_COOKIE_EXPIRES_IN || 7) * 24 * 60 * 60 * 1000
+    ),
+    httpOnly: true, // Cookie cannot be accessed or modified by browser JavaScript
+    secure: process.env.NODE_ENV === 'production', // Only send over HTTPS in production
+    sameSite: 'lax', // Protect against CSRF
+    path: '/'
+  };
+
+  // Send cookie
+  res.cookie('jwt', token, cookieOptions);
+
+  // Remove password from output
+  user.password = undefined;
+
+  res.status(statusCode).json({
+    success: true,
+    token, // Also send in body for backward compatibility
+    user: { id: user._id, name: user.name, email: user.email, role: user.role },
+  });
+};
+
 /**
  * POST /api/auth/register
  * Creates a new admin user. Only superadmins can create other superadmins.
@@ -23,13 +50,7 @@ async function register(req, res, next) {
     }
 
     const user = await User.create({ name, email, password, role: role || 'admin' });
-    const token = signToken(user._id);
-
-    res.status(201).json({
-      success: true,
-      token,
-      user: { id: user._id, name: user.name, email: user.email, role: user.role },
-    });
+    createSendToken(user, 201, res);
   } catch (err) {
     next(err);
   }
@@ -55,13 +76,7 @@ async function login(req, res, next) {
       return res.status(401).json({ success: false, message: 'Invalid credentials' });
     }
 
-    const token = signToken(user._id);
-
-    res.json({
-      success: true,
-      token,
-      user: { id: user._id, name: user.name, email: user.email, role: user.role },
-    });
+    createSendToken(user, 200, res);
   } catch (err) {
     next(err);
   }
@@ -99,6 +114,20 @@ async function changePassword(req, res, next) {
   }
 }
 
+/**
+ * POST /api/auth/logout
+ * Clears the JWT cookie
+ */
+async function logout(req, res) {
+  res.cookie('jwt', 'loggedout', {
+    expires: new Date(Date.now() + 10 * 1000),
+    httpOnly: true,
+    path: '/'
+  });
+  
+  res.json({ success: true, message: 'Logged out successfully' });
+}
+
 // Validation rules (used in routes)
 const registerValidation = [
   body('name').trim().notEmpty().withMessage('Name is required'),
@@ -111,4 +140,4 @@ const loginValidation = [
   body('password').notEmpty().withMessage('Password is required'),
 ];
 
-module.exports = { register, login, getMe, changePassword, registerValidation, loginValidation };
+module.exports = { register, login, getMe, changePassword, logout, registerValidation, loginValidation };

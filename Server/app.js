@@ -3,6 +3,7 @@ const cors = require('cors');
 const http = require('http');
 const { Server } = require('socket.io');
 const jwt = require('jsonwebtoken');
+const cookieParser = require('cookie-parser');
 const User = require('./models/User');
 
 const errorHandler = require('./middleware/errorHandler');
@@ -13,10 +14,12 @@ const authRoutes          = require('./routes/auth.routes');
 const usersRoutes         = require('./routes/users.routes');
 const chatRoutes          = require('./routes/chat.routes');
 const routeRoutes         = require('./routes/route.routes');
+const routesRoutes        = require('./routes/routes.routes');
 const transportRoutes     = require('./routes/transport.routes');
 const recommendationRoutes = require('./routes/recommendation.routes');
 const hubRoutes           = require('./routes/hub.routes');
 const placeRoutes         = require('./routes/place.routes');
+const analyticsRoutes     = require('./routes/analytics.routes');
 
 const app = express();
 const server = http.createServer(app);
@@ -72,8 +75,12 @@ app.use(
     origin: process.env.CLIENT_ORIGIN || '*',
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
+     credentials: true
   })
 );
+
+// ── Cookie parsing ────────────────────────────────────────────────────────────
+app.use(cookieParser());
 
 // ── Body parsing ──────────────────────────────────────────────────────────────
 app.use(express.json());
@@ -93,6 +100,9 @@ app.get('/api/test', (req, res) => {
 // Auth (public)
 app.use('/api/auth', authRoutes);
 
+// Analytics (public tracking, protected dashboard)
+app.use('/api/analytics', analyticsRoutes);
+
 // User management (superadmin only)
 app.use('/api/users', usersRoutes);
 
@@ -105,6 +115,7 @@ app.use('/api/transport',       transportRoutes);
 app.use('/api/recommendations', recommendationRoutes);
 
 // Admin-protected endpoints
+app.use('/api/routes',    protect, routesRoutes);
 app.use('/api/transports', protect, transportRoutes);
 app.use('/api/hubs',       protect, hubRoutes);
 app.use('/api/places',     protect, placeRoutes);

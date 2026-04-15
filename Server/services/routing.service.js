@@ -9,6 +9,7 @@
  */
 
 const Hub = require('../models/Hub');
+const Place = require('../models/Place');
 const RouteHistory = require('../models/RouteHistory');
 const { haversineKm } = require('../utils/haversine');
 const { getTrafficFactor, getTrafficMultiplier } = require('../utils/traffic');
@@ -17,6 +18,26 @@ const { scoreRoute, buildExplanation } = require('../utils/scoring');
 // Default transport speeds (km/h) — overridden by DB values when available
 const DEFAULT_SPEEDS = { taxi: 35, bus: 20, walk: 5 };
 const DEFAULT_PRICES = { taxi: 15, bus: 2, walk: 0 }; // ETB per km
+
+/**
+ * Find a location (hub or place) by name.
+ * Returns { name, latitude, longitude, type: 'hub'|'place' }
+ */
+async function findLocation(name) {
+  // Try to find in hubs first
+  const hub = await Hub.findOne({ name: { $regex: new RegExp(`^${name}$`, 'i') } });
+  if (hub) {
+    return { name: hub.name, latitude: hub.latitude, longitude: hub.longitude, type: 'hub' };
+  }
+
+  // Try to find in places
+  const place = await Place.findOne({ name: { $regex: new RegExp(`^${name}$`, 'i') } });
+  if (place) {
+    return { name: place.name, latitude: place.latitude, longitude: place.longitude, type: 'place' };
+  }
+
+  return null;
+}
 
 /**
  * Calculate the total distance along a sequence of hub names.
@@ -121,24 +142,28 @@ function scoreCandidates(candidates, hubMap, transportConfig) {
  * @returns {Promise<object>} route result
  */
 async function calculateRoute(startName, destinationName, transportOverride = null) {
-  // Load all hubs
-  const allHubs = await Hub.find({});
-  if (!allHubs.length) {
-    throw new Error('No hubs found. Run the seed script first.');
+  // Find start and destination locations (hubs or places)
+  const startLocation = await findLocation(startName);
+  const destLocation = await findLocation(destinationName);
+
+  if (!startLocation) {
+    throw new Error(`Location not found: "${startName}"`);
+  }
+  if (!destLocation) {
+    throw new Error(`Location not found: "${destinationName}"`);
   }
 
-  // Build a case-insensitive lookup map
-  const hubMap = new Map(allHubs.map((h) => [h.name.toLowerCase(), h]));
-
-  const startHub = hubMap.get(startName.toLowerCase());
-  if (!startHub) throw new Error(`Hub not found: "${startName}"`);
-
-  const destHub = hubMap.get(destinationName.toLowerCase());
-  if (!destHub) throw new Error(`Hub not found: "${destinationName}"`);
-
-  if (startHub.name === destHub.name) {
+  if (startLocation.name.toLowerCase() === destLocation.name.toLowerCase()) {
     throw new Error('Start and destination must be different');
   }
+
+  // Calculate direct distance between the two locations
+  const distance = parseFloat(haversineKm(
+    startLocation.latitude,
+    startLocation.longitude,
+    destLocation.latitude,
+    destLocation.longitude
+  ).toFixed(2));
 
   // Transport config — use override or fall back to defaults
   const transportConfig = transportOverride || {
@@ -146,37 +171,62 @@ async function calculateRoute(startName, destinationName, transportOverride = nu
     speedKmPerHour: DEFAULT_SPEEDS.bus,
   };
 
-  // Generate and score candidates
-  const candidates = buildCandidateRoutes(startHub, destHub, allHubs);
-  const scored = scoreCandidates(candidates, hubMap, transportConfig);
+  const trafficFactor = getTrafficFactor();
+  const trafficMultiplier = getTrafficMultiplier();
 
-  const best = scored[0];
-  const alternatives = scored.slice(1, 4); // return up to 3 alternatives
+  // Calculate time and cost for direct route
+  const baseTimeMin = (distance / transportConfig.speedKmPerHour) * 60;
+  const timeMin = parseFloat((baseTimeMin * trafficMultiplier).toFixed(1));
+  const cost = parseFloat((transportConfig.pricePerKm * distance).toFixed(2));
+  const score = scoreRoute({ time: timeMin, cost, trafficFactor, transfers: 0 });
+
+  // Build the route result
+  const bestRoute = [startLocation.name, destLocation.name];
+
+  // If both are hubs, try to find intermediate routes
+  let alternatives = [];
+  if (startLocation.type === 'hub' && destLocation.type === 'hub') {
+    const allHubs = await Hub.find({});
+    const hubMap = new Map(allHubs.map((h) => [h.name.toLowerCase(), h]));
+    const startHub = hubMap.get(startName.toLowerCase());
+    const destHub = hubMap.get(destinationName.toLowerCase());
+
+    if (startHub && destHub && allHubs.length > 2) {
+      const candidates = buildCandidateRoutes(startHub, destHub, allHubs);
+      const scored = scoreCandidates(candidates, hubMap, transportConfig);
+      
+      // Get alternatives (skip the first one which is the direct route)
+      alternatives = scored
+        .filter(s => s.route.length > 2) // Only routes with intermediate hubs
+        .slice(0, 3)
+        .map((alt) => ({
+          route: alt.route,
+          distance: alt.distance,
+          time: Math.round(alt.timeMin),
+          cost: Math.round(alt.cost),
+          score: alt.score,
+        }));
+    }
+  }
 
   // Persist to RouteHistory for analytics
   await RouteHistory.create({
-    start: startHub.name,
-    destination: destHub.name,
-    selectedRoute: best.route,
-    totalTime: best.timeMin,
-    totalCost: best.cost,
-    score: best.score,
+    start: startLocation.name,
+    destination: destLocation.name,
+    selectedRoute: bestRoute,
+    totalTime: timeMin,
+    totalCost: cost,
+    score: score,
   });
 
   return {
-    bestRoute: best.route,
-    distance: best.distance,
-    time: Math.round(best.timeMin),
-    cost: Math.round(best.cost),
-    score: best.score,
-    reason: buildExplanation(best),
-    alternatives: alternatives.map((alt) => ({
-      route: alt.route,
-      distance: alt.distance,
-      time: Math.round(alt.timeMin),
-      cost: Math.round(alt.cost),
-      score: alt.score,
-    })),
+    bestRoute,
+    distance,
+    time: Math.round(timeMin),
+    cost: Math.round(cost),
+    score: parseFloat(score.toFixed(3)),
+    reason: buildExplanation({ distance, timeMin, cost, score, transfers: 0 }),
+    alternatives,
   };
 }
 

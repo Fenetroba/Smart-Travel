@@ -1,8 +1,14 @@
-import { useAppContext } from '../../context/AppContext'
+import { useEffect } from 'react'
+import { useTransport } from '../../store/hooks/useTransport'
 import TransportConfigCard from '../../components/admin/TransportConfigCard'
 
 export default function TransportManager() {
-  const { transportModes, updateTransportMode } = useAppContext()
+  const { transportModes, updateTransportMode, fetchTransports } = useTransport()
+
+  useEffect(() => {
+    fetchTransports()
+  }, [fetchTransports])
+
   return (
     <div>
       <div className="mb-6">

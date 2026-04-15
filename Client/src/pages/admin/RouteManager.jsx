@@ -1,12 +1,19 @@
-import { useState } from 'react'
-import { useAppContext } from '../../context/AppContext'
+import { useState, useEffect } from 'react'
+import { useHubs } from '../../store/hooks/useHubs'
+import { useRoutes } from '../../store/hooks/useRoutes'
 import RouteForm from '../../components/admin/RouteForm'
 import ConfirmDialog from '../../components/shared/ConfirmDialog'
 
 export default function RouteManager() {
-  const { hubs, routes, addRoute, deleteRoute } = useAppContext()
+  const { hubs, fetchHubs } = useHubs()
+  const { routes, addRoute, deleteRoute, fetchRoutes } = useRoutes()
   const [showForm, setShowForm] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState(null)
+
+  useEffect(() => {
+    fetchHubs()
+    fetchRoutes()
+  }, [fetchHubs, fetchRoutes])
 
   const getHubName = (id) => hubs.find(h => h.id === id)?.name || id
 
